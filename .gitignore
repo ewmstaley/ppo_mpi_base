@@ -1,0 +1,11 @@
+*.egg-info
+logs
+output
+data
+no_include
+*.pt
+*.p
+*.sh
+*.out
+roms
+__pycache__
