@@ -20,10 +20,16 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 '''
 
 import gymnasium as gym
+import ale_py
 import numpy as np
 import torch
 from ppo_mpi_base.ppo import PPO
-from ppo_mpi_base.wrappers import GymnasiumToGymWrapper
+
+
+'''
+run me with: mpiexec -n <number_of_procs> python train_mpi.py
+
+'''
 
 # generic CNN that we can use
 class CNNNetwork(torch.nn.Module):
@@ -57,7 +63,7 @@ class CNNNetwork(torch.nn.Module):
 
 
 # define our environment
-def env_fn():
+def env_fn(**kwargs):
 
 	env = gym.make("PongNoFrameskip-v4")
 	env = gym.wrappers.atari_preprocessing.AtariPreprocessing(
@@ -68,46 +74,46 @@ def env_fn():
 		scale_obs=True
 	)
 
-	env = gym.wrappers.FrameStack(env, 4)
-
-	# old gym interface
-	env = GymnasiumToGymWrapper(env)
-
+	env = gym.wrappers.FrameStackObservation(env, 4)
 	return env
 
 
 # define a policy network architecture
-def policy_net_fn(obs, act):
+def policy_net_fn(obs, act, **kwargs):
 	return CNNNetwork(act, 0.01)
 
 
 # define a value network architecture
-def value_net_fn(obs):
+def value_net_fn(obs, **kwargs):
 	return CNNNetwork(1, 1.0)
 
 
-# run the thing
+# run!
 PPO(
     total_steps=20e6,
+
     env_fn=env_fn, 
     network_fn=policy_net_fn,
     value_network_fn=value_net_fn,
+
     seed=0, 
-    rollout_length_per_worker=512,
-    train_batch_size=32,
-    clip_rewards=True, 
+    rollout_length_per_worker=512,  
+    clip_rewards=False,
     gamma=0.99, 
-    clip_ratio=0.1, 
+    lam=0.95,
+    max_ep_len=None,
+    clip_ratio=0.1,
     entropy_coef=0.01,
     pi_lr=3e-4,
-    vf_lr=3e-4,
-    pi_grad_clip=100.0,
-    v_grad_clip=100.0,
+    vf_lr=1e-3,
+    train_batch_size=32,
+    pi_grad_clip=1.0,
+    v_grad_clip=1.0,
+    log_directory="./output/logs/pong_mpi/", 
+    save_location="./output/saved_model/pong_mpi/",
+    device=None,
+
     train_pi_epochs=5, 
     train_v_epochs=5, 
-    lam=0.95, 
-    max_ep_len=1e6,
     target_kl=0.01, 
-    log_directory="./output/logs/pong/", 
-    save_location="./output/saved_model/pong/"
 )

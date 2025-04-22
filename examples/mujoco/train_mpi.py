@@ -23,7 +23,12 @@ import gymnasium as gym
 import numpy as np
 import torch
 from ppo_mpi_base.ppo import PPO
-from ppo_mpi_base.wrappers import GymnasiumToGymWrapper
+
+'''
+run me with: mpiexec -n <number_of_procs> python train_mpi.py
+
+'''
+
 
 # generic network that we can use
 class Network(torch.nn.Module):
@@ -41,43 +46,45 @@ class Network(torch.nn.Module):
 
 
 # define our environment
-def env_fn():
+def env_fn(**kwargs):
 	env = gym.make("Ant-v4")
-
-	# for simplicity, force old gym interface
-	env = GymnasiumToGymWrapper(env)
 	return env
 
-
 # define a policy network architecture
-def policy_net_fn(obs, act):
+def policy_net_fn(obs, act, **kwargs):
 	return Network(obs, act)
 
 # define a value network architecture
-def value_net_fn(obs):
+def value_net_fn(obs, **kwargs):
 	return Network(obs, 1)
 
 
-# run the thing
+# run!
 PPO(
     total_steps=10e6,
+
     env_fn=env_fn, 
     network_fn=policy_net_fn,
     value_network_fn=value_net_fn,
+
     seed=0, 
-    rollout_length_per_worker=1024,
-    train_batch_size=128,  
+    rollout_length_per_worker=1024,  
+    clip_rewards=False,
     gamma=0.99, 
-    clip_ratio=0.2, 
+    lam=0.97,
+    max_ep_len=1000,
+    clip_ratio=0.2,
+    entropy_coef=0.01,
     pi_lr=3e-4,
-    vf_lr=1e-3, 
+    vf_lr=1e-3,
+    train_batch_size=128,
     pi_grad_clip=1.0,
     v_grad_clip=1.0,
+    log_directory="./output/logs/ant_mpi/", 
+    save_location="./output/saved_model/ant_mpi/",
+    device=None,
+
     train_pi_epochs=80, 
     train_v_epochs=80, 
-    lam=0.97, 
-    max_ep_len=1000,
     target_kl=0.01, 
-    log_directory="./output/logs/ant/", 
-    save_location="./output/saved_model/ant/"
 )

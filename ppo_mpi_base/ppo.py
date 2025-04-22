@@ -19,62 +19,33 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 '''
 
-from ppo_mpi_base.worker import PPOWorker
+from ppo_mpi_base.mpi_worker import PPOMPIWorker
+from ppo_mpi_base.vec_worker import PPOVecWorker
 from ppo_mpi_base.timekeeper import TimeKeeper
 from ppo_mpi_base.mpi_utils import *
 import time
 
 def PPO(
     total_steps,
-    env_fn,  
-    network_fn,
-    value_network_fn,
-    seed=0, 
-    rollout_length_per_worker=5000, 
-    clip_rewards=False,  
-    gamma=0.99, 
-    lam=0.95,
-    max_ep_len=None,
-    target_kl=0.01, 
-    clip_ratio=0.2,
-    entropy_coef=0.0, 
-    pi_lr=3e-4,
-    vf_lr=1e-3, 
-    train_pi_epochs=80, 
-    train_v_epochs=80,
-    train_batch_size=None,
-    pi_grad_clip=1.0,
-    v_grad_clip=1.0,
-    log_directory="./logs/", 
-    save_location="./saved_model/",
 
-    # adding these to support algos like GAIL
-    rollout_interception_callback=None,
-    external_update_callback=None,
+    rollout_length_per_worker=512,
+    train_pi_epochs=40, 
+    train_v_epochs=40, 
+    target_kl=0.0,
+    use_vectorized_envs=False,
+
+    grad_accum=1,
+    external_update_callback=None, # hook between rollout and update
+    delay_training_for_steps=0,
+
+    **worker_kwargs # almost all args are passed through to worker. See worker_base.py.
 ):
 
     tk = TimeKeeper(total_steps)
     
-    worker = PPOWorker(
-        env_fn=env_fn,  
-        network_fn=network_fn,
-        value_network_fn=value_network_fn,
-        seed=seed, 
-        rollout_length_per_worker=rollout_length_per_worker,  
-        gamma=gamma, 
-        lam=lam,
-        max_ep_len=max_ep_len,
-        clip_ratio=clip_ratio,
-        entropy_coef=entropy_coef, 
-        pi_lr=pi_lr,
-        vf_lr=vf_lr,
-        train_batch_size=train_batch_size,
-        pi_grad_clip=pi_grad_clip,
-        v_grad_clip=v_grad_clip,
-        log_directory=log_directory, 
-        save_location=save_location,
-        rollout_interception_callback=rollout_interception_callback
-    )
+    worker_cls = PPOVecWorker if use_vectorized_envs else PPOMPIWorker
+    worker_kwargs["rollout_length_per_worker"] = rollout_length_per_worker
+    worker = worker_cls(**worker_kwargs)
 
     # initial weight sync
     worker.sync_weights_for_policy_network()
@@ -82,6 +53,8 @@ def PPO(
 
     # how many batches per epoch?
     batches = rollout_length_per_worker//worker.train_batch_size
+    if use_vectorized_envs:
+        batches = batches*worker.num_environments
 
     # run
     while worker.total_steps < total_steps:
@@ -97,16 +70,23 @@ def PPO(
             if external_loss is not None and worker.rank==0:
                 worker.summary_writer.add_scalar("external_loss", external_loss, worker.total_steps)
 
+        if worker.total_steps < delay_training_for_steps:
+            continue
+
         # update policy network
         for i in range(train_pi_epochs):
             worker.get_and_shuffle_data()
             approx_kls = []
             
+            worker.zero_policy_grads()
             for b in range(batches):
                 akl = worker.compute_grads_for_policy_network()
                 approx_kls.append(akl)
-                worker.average_grads_for_policy_network()
-                worker.update_policy_network()
+
+                if b%grad_accum == 0:
+                    worker.average_grads_for_policy_network()
+                    worker.update_policy_network()
+                    worker.zero_policy_grads()
 
                 if mpi_avg(MPI.COMM_WORLD, np.mean(approx_kls)) > 1.5*target_kl:
                     zero_print("Hit KL after", i, "epochs,", b, "batches")
@@ -120,10 +100,15 @@ def PPO(
         # update value network
         for i in range(train_v_epochs):
             worker.get_and_shuffle_data()
+            worker.zero_value_grads()
             for b in range(batches):
                 worker.compute_grads_for_value_network()
-                worker.average_grads_for_value_network()
-                worker.update_value_network()
+
+                if b%grad_accum == 0:
+                    worker.average_grads_for_value_network()
+                    worker.update_value_network()
+                    worker.zero_value_grads()
+
         worker.sync_weights_for_value_network()
 
         # save

@@ -2,13 +2,42 @@
 
 This is a base version of PPO that is meant as a starting point for algorithm modifications or as a simple implementation to use in research. It is refactored from spinning-up and includes some additional functionality here and there.
 
-This work is authored by Ted Staley and is Copyright © 2024 The Johns Hopkins University Applied Physics Laboratory LLC, please see the LICENSE file.
+This work is authored by Ted Staley and is Copyright © 2025 The Johns Hopkins University Applied Physics Laboratory LLC, please see the LICENSE file.
+
+
+
+## Major Update 4/22/2025
+
+This repo now also supports centralized networks with vectorized environments as an alternative execution style. This has significant speed implications for larger networks (i.e. CNNs) which are best placed on the GPU. The examples now include running both styles for Atari and Mujoco (four examples total).
+
+For reference, I see the following throughput on my machine, using a CNN for Atari (Pong) and a simple MLP for Mujoco (Antv4). MPI-based execution is significantly faster for the MLP, but significantly slower for the CNN:
+
+- Atari (PongNoFrameskip-v4), 8 Environments, CNN:
+  - Exec w/ MPI: ~600 fps
+  - Vectorization: **~1,900** fps
+- Mujoco (Ant-v4), 8 Environments, MLP:
+  - Exec w/ MPI: **~6,000** fps
+  - Vectorization: ~3,200 fps
+
+
+
+**Additional Changes and Notes:**
+
+- Two worker classes (for mpi and vectorized) stem from a common base class in worker_base.py
+- gymnasium is now the preferred interface rather than gym
+- kwargs can be passed through to the environment (mpi only), policy, or value network for additional customization
+- support for gradient accumulation
+- For mpi execution, the device must be None (i.e. should not place networks on GPU)
+  - While this is technically possible (each process uses 1/Nth of the GPU), it is awkward and probably more trouble than it is worth.
+- For vectorized environments, some additional constraints stem from gymnasium's AsyncVecEnv wrapper:
+  - env_kwargs are not supported
+  - max_ep_len must be None, and should instead be enforced with gymnasium.wrappers.TimeLimit
 
 
 
 ## Installation
 
-Requires torch, tensorboard, mpi4py, numpy, scipy, and gym(nasium).
+Requires torch, tensorboard, mpi4py, numpy, scipy, and gymnasium.
 
 Most of these can be pip-installed. To install mpi4py I recommend conda-forge:
 ```
@@ -19,6 +48,8 @@ Then install this repo with:
 ```
 pip install -e .
 ```
+
+Note: It is worth trying a few different MPI implementations to see which is best on your system.
 
 
 
@@ -52,7 +83,7 @@ Together these give a great deal of flexibility over the experiment (along with 
 
 
 
-## Results on Selected Environments
+## Results on Selected Environments (2024, MPI-Only)
 
 ### Atari
 **examples/atari/**

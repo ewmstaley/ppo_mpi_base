@@ -44,6 +44,14 @@ def average_grads_across_processes(comm, parameters):
         p_grad_numpy[:] = avg_p_grad[:]
 
 
+def average_grads_across_processes_2(comm, parameters):
+    # perform a single mpi average instead of looping through parameters
+    all_params = torch.nn.utils.parameters_to_vector([p.grad for p in parameters])
+    all_params_numpy = all_params.numpy()
+    avg_p_grad = mpi_avg(comm, all_params_numpy)
+    all_params_numpy[:] = avg_p_grad[:]
+
+
 # averages weights across procs, does not retain gradient information
 def sync_weights_across_processes(comm, parameters):
     for p in parameters:

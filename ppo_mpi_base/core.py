@@ -136,7 +136,15 @@ class ValueSqueezeWrapper(torch.nn.Module):
 
 class ActorCritic(nn.Module):
 
-    def __init__(self, observation_space, action_space, policy_network_fn, value_network_fn):
+    def __init__(
+        self, 
+        observation_space, 
+        action_space, 
+        policy_network_fn, 
+        value_network_fn,
+        policy_kwargs={},
+        critic_kwargs={}
+    ):
         super().__init__()
 
         obs_dim = observation_space.shape[0]
@@ -144,11 +152,11 @@ class ActorCritic(nn.Module):
         # policy builder depends on action space
         if isinstance(action_space, Box):
             act_dim = action_space.shape[0]
-            self.pi = GaussianHead(policy_network_fn(obs_dim, act_dim), act_dim)
+            self.pi = GaussianHead(policy_network_fn(obs_dim, act_dim, **policy_kwargs), act_dim)
         elif isinstance(action_space, Discrete):
-            self.pi = CategoricalHead(policy_network_fn(obs_dim, action_space.n))
+            self.pi = CategoricalHead(policy_network_fn(obs_dim, action_space.n, **policy_kwargs))
 
-        self.v = ValueSqueezeWrapper(value_network_fn(obs_dim))
+        self.v = ValueSqueezeWrapper(value_network_fn(obs_dim, **critic_kwargs))
 
     def step(self, obs):
         with torch.no_grad():
@@ -157,7 +165,7 @@ class ActorCritic(nn.Module):
             a = pi.sample()
             logp_a = self.pi._log_prob_from_distribution(pi, a)
                 
-        return a.numpy(), v.numpy(), logp_a.numpy()
+        return a.cpu().numpy(), v.cpu().numpy(), logp_a.cpu().numpy()
 
     def act(self, obs):
         return self.step(obs)[0]
