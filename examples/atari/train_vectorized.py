@@ -62,8 +62,7 @@ class CNNNetwork(torch.nn.Module):
 
 
 # define our environment (a single environment instance)
-# note no kwargs here
-def env_fn():
+def env_fn(**kwargs):
 
     env = gym.make("PongNoFrameskip-v4")
     env = gym.wrappers.atari_preprocessing.AtariPreprocessing(
@@ -79,7 +78,7 @@ def env_fn():
 
 
 # define how to construct a vectorized environment
-def make_vec_env(env_fn, num_envs):
+def make_vec_env(env_fn, num_envs, **env_kwargs):
     env = gym.vector.AsyncVectorEnv([env_fn]*num_envs)
     return env
 

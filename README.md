@@ -25,12 +25,13 @@ For reference, I see the following throughput on my machine, using a CNN for Ata
 
 - Two worker classes (for mpi and vectorized) stem from a common base class in worker_base.py
 - gymnasium is now the preferred interface rather than gym
-- kwargs can be passed through to the environment (mpi only), policy, or value network for additional customization
+- kwargs can be passed through to the environment, policy, or value network for additional customization
 - support for gradient accumulation
 - For mpi execution, the device must be None (i.e. should not place networks on GPU)
   - While this is technically possible (each process uses 1/Nth of the GPU), it is awkward and probably more trouble than it is worth.
 - For vectorized environments, some additional constraints stem from gymnasium's AsyncVecEnv wrapper:
-  - env_kwargs are not supported
+  - env_kwargs are supported but a bit awkward to use.
+    - See the example in: ```/examples/mujoco/train_vectorized_env_kwargs_example.py```
   - max_ep_len must be None, and should instead be enforced with gymnasium.wrappers.TimeLimit
 
 

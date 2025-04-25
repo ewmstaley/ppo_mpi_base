@@ -54,8 +54,7 @@ class PPOVecWorker(PPOWorkerBase):
         assert self.max_ep_len is None, "Vectorized setting does not support max ep len; add this with TimeLimit wrapper instead."
 
     def build_env(self):
-        assert self.env_kwargs == {}, "Cannot use kwargs for vectorized envs; not supported by gymnasium."
-        self.env = self.make_vec_env_fn(self.env_fn, self.num_environments)
+        self.env = self.make_vec_env_fn(self.env_fn, self.num_environments, **self.env_kwargs)
         obs_spaces = self.env.get_attr("observation_space")
         act_spaces = self.env.get_attr("action_space")
         if self.obs_space_override is not None:

@@ -23,9 +23,18 @@ import gymnasium as gym
 import numpy as np
 import torch
 from ppo_mpi_base.ppo import PPO
+from functools import partial
 
 '''
-run me without mpi: python train_vectorized.py
+Passing kwargs through to the environment is a bit awkward because 
+it is not built in to gymnasium's AsyncVectorEnv.
+
+We can accomplish this by first making functools.partials that include kwargs,
+and then passing these to AsyncVectorEnv.
+
+Note that AsyncVectorEnv will initally build the first environment once 
+as a dummy environment, and then bring it down and proceed to build all
+parallel environments (including re-building the first).
 
 '''
 
@@ -47,6 +56,8 @@ class Network(torch.nn.Module):
 
 # define our environment
 def env_fn(**kwargs):
+    print("I am env", kwargs["env_id"], "with kwargs:", kwargs)
+
     env = gym.make("Ant-v4")
 
     ### We need to enforce episode length via wrapper
@@ -57,7 +68,15 @@ def env_fn(**kwargs):
 
 # define how to construct a vectorized environment
 def make_vec_env(env_fn, num_envs, **env_kwargs):
-    env = gym.vector.AsyncVectorEnv([env_fn]*num_envs)
+    # first make partials that include kwargs. 
+    # here we also pass the env's number to show this possibility.
+    partials = []
+    for i in range(num_envs):
+        efn = partial(env_fn, env_id=i, **env_kwargs)
+        partials.append(efn)
+
+    # now use the partials in place of many "env_fn" copies.
+    env = gym.vector.AsyncVectorEnv(partials)
     return env
 
 # define a policy network architecture
@@ -68,13 +87,14 @@ def policy_net_fn(obs, act, **kwargs):
 def value_net_fn(obs, **kwargs):
     return Network(obs, 1)
 
+
 if __name__ == "__main__":
 
     device = torch.device("cuda")
 
     # run!
     PPO(
-        total_steps=10e6,
+        total_steps=1,
 
         env_fn=env_fn, 
         network_fn=policy_net_fn,
@@ -104,5 +124,6 @@ if __name__ == "__main__":
         # vector settings
         use_vectorized_envs=True,
         num_environments=8,
-        make_vec_env_fn=make_vec_env
+        make_vec_env_fn=make_vec_env,
+        env_kwargs={"some_key":"some_value"}
     )
